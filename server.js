@@ -1,51 +1,43 @@
 const express = require('express');
+const axios = require('axios');
+const cheerio = require('cheerio');
 const app = express();
-const fetch = require('node-fetch');
 app.use(express.json());
 
-// --- EXISTING single query endpoint
+// --- Get Average eBay Sold Price
 app.get('/api/getCardPrice', async (req, res) => {
-  const query = req.query.query;
-  const url = `https://api.ebay.com/.../findCompletedItems?q=${encodeURIComponent(query)}`; // Example placeholder
-  const response = await fetch(url);
-  const data = await response.json();
-  if (data && data.averagePrice !== undefined) {
-    res.json({ averagePrice: data.averagePrice });
-  } else {
-    res.json({ averagePrice: null });
-  }
-});
-
-// --- NEW BATCH endpoint
-app.post('/api/getCardPrices', async (req, res) => {
   try {
-    const queries = req.body.queries;
-    if (!queries || !Array.isArray(queries)) {
-      return res.status(400).json({ error: 'Invalid queries array' });
-    }
+    const query = req.query.query;
+    const url = `https://www.ebay.co.uk/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=13&LH_Complete=1&LH_Sold=1`;
 
-    const results = [];
-
-    for (const query of queries) {
-      const url = `https://api.ebay.com/.../findCompletedItems?q=${encodeURIComponent(query)}`; // Same logic
-      const response = await fetch(url);
-      const data = await response.json();
-
-      if (data && data.averagePrice !== undefined) {
-        results.push({ query: query, averagePrice: data.averagePrice });
-      } else {
-        results.push({ query: query, averagePrice: null });
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0'
       }
+    });
 
-      await new Promise(resolve => setTimeout(resolve, 1200)); // (1.2s safety delay between hits)
+    const $ = cheerio.load(response.data);
+    let prices = [];
+
+    $('span.s-item__price').each((i, el) => {
+      let priceText = $(el).text().replace('£', '').replace(',', '').trim();
+      let price = parseFloat(priceText);
+      if (!isNaN(price)) {
+        prices.push(price);
+      }
+    });
+
+    if (prices.length > 0) {
+      const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
+      res.json({ averagePrice: parseFloat(avgPrice.toFixed(2)) });
+    } else {
+      res.json({ averagePrice: null });
     }
-
-    res.json({ results: results });
   } catch (error) {
-    console.error('Batch Fetch Error:', error);
-    res.status(500).json({ error: 'Batch Fetch Failed' });
+    console.error('Fetch Error:', error);
+    res.status(500).json({ averagePrice: null });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ CardCatch running on port ${PORT}`));
