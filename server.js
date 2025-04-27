@@ -1,4 +1,4 @@
-// --- CardCatch v2 Server (Render Corrected) ---
+// --- CardCatch v2 Server (Simple + Render Corrected) ---
 
 const express = require('express');
 const axios = require('axios');
@@ -24,7 +24,7 @@ function buildEbaySearchUrl(cardName, setName, cardNumber) {
   return `${baseUrl}?${params.toString()}`;
 }
 
-// --- 2. Scraper (Simple version) ---
+// --- 2. Scraper ---
 async function scrapeSoldPrices(cardName, setName, cardNumber) {
   try {
     const ebayUrl = buildEbaySearchUrl(cardName, setName, cardNumber);
@@ -42,7 +42,7 @@ async function scrapeSoldPrices(cardName, setName, cardNumber) {
       const price = parseFloat(rawPrice);
 
       if (!title || isNaN(price)) {
-        return; // Skip junk
+        return; // Skip bad entries
       }
 
       prices.push(price);
@@ -56,4 +56,34 @@ async function scrapeSoldPrices(cardName, setName, cardNumber) {
 
     const sortedPrices = prices.sort((a, b) => a - b);
     const middle = Math.floor(sortedPrices.length / 2);
-    const medianPrice =
+    const medianPrice = (sortedPrices.length % 2 !== 0)
+      ? sortedPrices[middle]
+      : ((sortedPrices[middle - 1] + sortedPrices[middle]) / 2).toFixed(2);
+
+    return { averagePrice, medianPrice };
+  } catch (error) {
+    console.error("Scraping Error:", error.message);
+    return { averagePrice: null, medianPrice: null };
+  }
+}
+
+// --- 3. Root Health Check ---
+app.get('/', (req, res) => {
+  res.send('✅ CardCatch Server is Alive!');
+});
+
+// --- 4. Card Price API Endpoint ---
+app.get('/api/getCardPrice', async (req, res) => {
+  const { cardName, setName, cardNumber } = req.query;
+  if (!cardName || !setName || !cardNumber) {
+    return res.status(400).json({ error: 'Missing query parameters.' });
+  }
+  const result = await scrapeSoldPrices(cardName, setName, cardNumber);
+  res.json(result);
+});
+
+// --- 5. Start Server ---
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ CardCatch server running on port ${PORT}`);
+});
