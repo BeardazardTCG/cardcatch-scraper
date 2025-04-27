@@ -68,10 +68,10 @@ async function scrapeSoldPrices(cardName, setName, cardNumber) {
   }
 }
 
-// --- 3. Test the Scraper ---
-scrapeSoldPrices("Mew ex", "Scarlet & Violet 151", "151/165").then(result => {
+scrapeSoldPrices("Charizard ex", "Obsidian Flames", "125/197").then(result => {
   console.log("Scrape Result:", result);
 });
+
 
 // --- 4. Standard Server Listen (not critical right now) ---
 const PORT = process.env.PORT || 3000;
