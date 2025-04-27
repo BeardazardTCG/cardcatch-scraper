@@ -54,3 +54,6 @@ async function scrapeSoldPrices(cardName, setName, cardNumber) {
     return { averagePrice: null, medianPrice: null };
   }
 }
+scrapeSoldPrices("Charizard ex", "Obsidian Flames", "125/197").then(result => {
+  console.log("Scrape Result:", result);
+});
