@@ -66,3 +66,9 @@ app.get('/api/getCardPrice', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ CardCatch running on port ${PORT}`));
+// --- TEMPORARY TEST ---
+// This will run once when you start the server
+
+scrapeSoldPrices("Mew ex", "Scarlet & Violet 151", "151/165").then(result => {
+  console.log("Scrape Result:", result);
+});
