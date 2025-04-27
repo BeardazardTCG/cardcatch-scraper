@@ -1,27 +1,4 @@
-// --- CardCatch v2 ---
-// Build perfect eBay search URL for a given card
-
-function buildEbaySearchUrl(cardName, setName, cardNumber) {
-  const baseUrl = 'https://www.ebay.co.uk/sch/i.html';
-  
-  // Combine card name, set, and number into one search query
-  const searchQuery = `${cardName} ${setName} ${cardNumber}`.trim();
-  
-  const params = new URLSearchParams({
-    _nkw: searchQuery,             // Search term
-    _sacat: '183454',               // Category: CCG Individual Cards
-    LH_Sold: '1',                   // Sold listings only
-    LH_Complete: '1',               // Completed listings
-    LH_BIN: '1',                    // Buy It Now only
-    LH_PrefLoc: '1',                // UK Sellers only
-    _ipg: '120',                    // 120 items per page
-    _sop: '13',                     // Sort by Ended Recently
-    _dmd: '2'                       // Display mode gallery
-  });
-
-  const fullUrl = `${baseUrl}?${params.toString()}`;
-  return fullUrl;
-}
+// --- CardCatch v2 Server ---
 
 const express = require('express');
 const axios = require('axios');
@@ -29,16 +6,34 @@ const cheerio = require('cheerio');
 const app = express();
 app.use(express.json());
 
-// --- Get Average eBay Sold Price
-app.get('/api/getCardPrice', async (req, res) => {
-  try {
-    const query = req.query.query;
-    const url = `https://www.ebay.co.uk/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=13&LH_Complete=1&LH_Sold=1`;
+// --- 1. URL Builder (Build correct eBay Search URL) ---
+function buildEbaySearchUrl(cardName, setName, cardNumber) {
+  const baseUrl = 'https://www.ebay.co.uk/sch/i.html';
+  
+  const searchQuery = `${cardName} ${setName} ${cardNumber}`.trim();
 
-    const response = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0'
-      }
+  const params = new URLSearchParams({
+    _nkw: searchQuery,
+    _sacat: '183454',          // Category: CCG Individual Cards
+    LH_Sold: '1',              // Sold Listings Only
+    LH_Complete: '1',          // Completed Listings
+    LH_BIN: '1',               // Buy It Now Only
+    LH_PrefLoc: '1',           // UK Sellers Only
+    _ipg: '120',               // 120 items per page
+    _sop: '13',                // Sort by Ended Recently
+    _dmd: '2'                  // Gallery View
+  });
+
+  const fullUrl = `${baseUrl}?${params.toString()}`;
+  return fullUrl;
+}
+
+// --- 2. Scrape Sold Prices from eBay ---
+async function scrapeSoldPrices(cardName, setName, cardNumber) {
+  try {
+    const ebayUrl = buildEbaySearchUrl(cardName, setName, cardNumber);
+    const response = await axios.get(ebayUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0' }
     });
 
     const $ = cheerio.load(response.data);
@@ -52,23 +47,32 @@ app.get('/api/getCardPrice', async (req, res) => {
       }
     });
 
-    if (prices.length > 0) {
-      const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
-      res.json({ averagePrice: parseFloat(avgPrice.toFixed(2)) });
-    } else {
-      res.json({ averagePrice: null });
+    if (prices.length === 0) {
+      return { averagePrice: null, medianPrice: null };
     }
+
+    // Calculate average
+    const averagePrice = (prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2);
+
+    // Calculate median
+    const sortedPrices = prices.sort((a, b) => a - b);
+    const middle = Math.floor(sortedPrices.length / 2);
+    const medianPrice = (sortedPrices.length % 2 !== 0) ? 
+      sortedPrices[middle] : 
+      ((sortedPrices[middle - 1] + sortedPrices[middle]) / 2).toFixed(2);
+
+    return { averagePrice, medianPrice };
   } catch (error) {
-    console.error('Fetch Error:', error);
-    res.status(500).json({ averagePrice: null });
+    console.error("Scraping Error:", error.message);
+    return { averagePrice: null, medianPrice: null };
   }
-});
+}
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ CardCatch running on port ${PORT}`));
-// --- TEMPORARY TEST ---
-// This will run once when you start the server
-
+// --- 3. Test the Scraper ---
 scrapeSoldPrices("Mew ex", "Scarlet & Violet 151", "151/165").then(result => {
   console.log("Scrape Result:", result);
 });
+
+// --- 4. Standard Server Listen (not critical right now) ---
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`✅ CardCatch server running on port ${PORT}`));
