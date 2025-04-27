@@ -1,4 +1,4 @@
-// --- CardCatch v2 Server (Simple + Render Corrected) ---
+// --- CardCatch v2 Server (Simple, Median First, Stable) ---
 
 const express = require('express');
 const axios = require('axios');
@@ -12,19 +12,19 @@ function buildEbaySearchUrl(cardName, setName, cardNumber) {
   const searchQuery = `${cardName} ${setName} ${cardNumber}`.trim();
   const params = new URLSearchParams({
     _nkw: searchQuery,
-    _sacat: '183454',
-    LH_Sold: '1',
-    LH_Complete: '1',
-    LH_BIN: '1',
-    LH_PrefLoc: '1',
-    _ipg: '120',
-    _sop: '13',
-    _dmd: '2'
+    _sacat: '183454',          // CCG Individual Cards
+    LH_Sold: '1',              // Sold Listings
+    LH_Complete: '1',          // Completed Listings
+    LH_BIN: '1',               // Buy It Now
+    LH_PrefLoc: '1',           // UK sellers
+    _ipg: '120',               // 120 items per page
+    _sop: '13',                // Ended Recently
+    _dmd: '2'                  // Gallery View
   });
   return `${baseUrl}?${params.toString()}`;
 }
 
-// --- 2. Scraper ---
+// --- 2. Scraper (Simple with Median First) ---
 async function scrapeSoldPrices(cardName, setName, cardNumber) {
   try {
     const ebayUrl = buildEbaySearchUrl(cardName, setName, cardNumber);
@@ -36,13 +36,13 @@ async function scrapeSoldPrices(cardName, setName, cardNumber) {
     let prices = [];
 
     $('li.s-item').each((_, el) => {
-      const title = $(el).find('h3.s-item__title').text().toLowerCase();
-      const rawPrice = $(el).find('span.s-item__price').first().text()
-                          .replace('£', '').replace(',', '').trim();
-      const price = parseFloat(rawPrice);
+      const title = $(el).find('h3.s-item__title').text();
+      const priceText = $(el).find('span.s-item__price').first().text()
+                             .replace('£', '').replace(',', '').trim();
+      const price = parseFloat(priceText);
 
       if (!title || isNaN(price)) {
-        return; // Skip bad entries
+        return; // skip
       }
 
       prices.push(price);
@@ -52,15 +52,18 @@ async function scrapeSoldPrices(cardName, setName, cardNumber) {
       return { averagePrice: null, medianPrice: null };
     }
 
-    const averagePrice = (prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2);
-
     const sortedPrices = prices.sort((a, b) => a - b);
     const middle = Math.floor(sortedPrices.length / 2);
     const medianPrice = (sortedPrices.length % 2 !== 0)
       ? sortedPrices[middle]
-      : ((sortedPrices[middle - 1] + sortedPrices[middle]) / 2).toFixed(2);
+      : ((sortedPrices[middle - 1] + sortedPrices[middle]) / 2);
 
-    return { averagePrice, medianPrice };
+    const averagePrice = (prices.reduce((a, b) => a + b, 0) / prices.length);
+
+    return { 
+      averagePrice: parseFloat(averagePrice.toFixed(2)), 
+      medianPrice: parseFloat(medianPrice.toFixed(2)) 
+    };
   } catch (error) {
     console.error("Scraping Error:", error.message);
     return { averagePrice: null, medianPrice: null };
@@ -72,7 +75,7 @@ app.get('/', (req, res) => {
   res.send('✅ CardCatch Server is Alive!');
 });
 
-// --- 4. Card Price API Endpoint ---
+// --- 4. API Endpoint ---
 app.get('/api/getCardPrice', async (req, res) => {
   const { cardName, setName, cardNumber } = req.query;
   if (!cardName || !setName || !cardNumber) {
