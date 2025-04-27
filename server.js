@@ -1,4 +1,30 @@
-// --- 2. Scraper (Simpler, no aggressive filters) ---
+// --- CardCatch v2 Server (Render Corrected) ---
+
+const express = require('express');
+const axios = require('axios');
+const cheerio = require('cheerio');
+const app = express();
+app.use(express.json());
+
+// --- 1. URL Builder ---
+function buildEbaySearchUrl(cardName, setName, cardNumber) {
+  const baseUrl = 'https://www.ebay.co.uk/sch/i.html';
+  const searchQuery = `${cardName} ${setName} ${cardNumber}`.trim();
+  const params = new URLSearchParams({
+    _nkw: searchQuery,
+    _sacat: '183454',
+    LH_Sold: '1',
+    LH_Complete: '1',
+    LH_BIN: '1',
+    LH_PrefLoc: '1',
+    _ipg: '120',
+    _sop: '13',
+    _dmd: '2'
+  });
+  return `${baseUrl}?${params.toString()}`;
+}
+
+// --- 2. Scraper (Simple version) ---
 async function scrapeSoldPrices(cardName, setName, cardNumber) {
   try {
     const ebayUrl = buildEbaySearchUrl(cardName, setName, cardNumber);
@@ -12,14 +38,13 @@ async function scrapeSoldPrices(cardName, setName, cardNumber) {
     $('li.s-item').each((_, el) => {
       const title = $(el).find('h3.s-item__title').text().toLowerCase();
       const rawPrice = $(el).find('span.s-item__price').first().text()
-                          .replace('£','').replace(',','').trim();
+                          .replace('£', '').replace(',', '').trim();
       const price = parseFloat(rawPrice);
-      
+
       if (!title || isNaN(price)) {
         return; // Skip junk
       }
 
-      // ✅ No aggressive filters — allow anything with a valid title and price
       prices.push(price);
     });
 
@@ -27,19 +52,8 @@ async function scrapeSoldPrices(cardName, setName, cardNumber) {
       return { averagePrice: null, medianPrice: null };
     }
 
-    // Calculate average
     const averagePrice = (prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2);
 
-    // Calculate median
     const sortedPrices = prices.sort((a, b) => a - b);
     const middle = Math.floor(sortedPrices.length / 2);
-    const medianPrice = (sortedPrices.length % 2 !== 0)
-      ? sortedPrices[middle]
-      : ((sortedPrices[middle - 1] + sortedPrices[middle]) / 2).toFixed(2);
-
-    return { averagePrice, medianPrice };
-  } catch (error) {
-    console.error("Scraping Error:", error.message);
-    return { averagePrice: null, medianPrice: null };
-  }
-}
+    const medianPrice =
