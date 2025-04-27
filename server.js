@@ -1,9 +1,34 @@
+// --- CardCatch v2 Server ---
+
+const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
+const app = express();
+app.use(express.json());
 
-// --- CardCatch v2 Smart Scraper ---
-// Scrape sold prices from eBay, block slabs/lots, use median pricing
+// --- 1. URL Builder (Build perfect eBay search URL) ---
+function buildEbaySearchUrl(cardName, setName, cardNumber) {
+  const baseUrl = 'https://www.ebay.co.uk/sch/i.html';
 
+  const searchQuery = `${cardName} ${setName} ${cardNumber}`.trim();
+
+  const params = new URLSearchParams({
+    _nkw: searchQuery,
+    _sacat: '183454',          // CCG Individual Cards
+    LH_Sold: '1',              // Sold Listings Only
+    LH_Complete: '1',          // Completed Listings
+    LH_BIN: '1',               // Buy It Now Only
+    LH_PrefLoc: '1',           // UK Sellers Only
+    _ipg: '120',               // 120 items per page
+    _sop: '13',                // Sort by Ended Recently
+    _dmd: '2'                  // Gallery View
+  });
+
+  const fullUrl = `${baseUrl}?${params.toString()}`;
+  return fullUrl;
+}
+
+// --- 2. Smart Scraper (Scrape sold prices, block slabs + lots) ---
 async function scrapeSoldPrices(cardName, setName, cardNumber) {
   try {
     const ebayUrl = buildEbaySearchUrl(cardName, setName, cardNumber);
@@ -14,7 +39,7 @@ async function scrapeSoldPrices(cardName, setName, cardNumber) {
     const $ = cheerio.load(response.data);
     let prices = [];
 
-    // Define BAD keywords (case insensitive)
+    // Bad keywords to block (case insensitive)
     const badWords = ["PSA", "BGS", "CGC", "Slab", "Graded", "Lot", "Set", "Binder", "Bundle", "Collection"];
 
     $('li.s-item').each((i, el) => {
@@ -26,7 +51,6 @@ async function scrapeSoldPrices(cardName, setName, cardNumber) {
         return; // skip if missing title or bad price
       }
 
-      // Check if title contains any bad keywords
       const isBadListing = badWords.some(badWord => title.includes(badWord.toLowerCase()));
 
       if (!isBadListing) {
@@ -50,10 +74,4 @@ async function scrapeSoldPrices(cardName, setName, cardNumber) {
 
     return { averagePrice, medianPrice };
   } catch (error) {
-    console.error("Scraping Error:", error.message);
-    return { averagePrice: null, medianPrice: null };
-  }
-}
-scrapeSoldPrices("Charizard ex", "Obsidian Flames", "125/197").then(result => {
-  console.log("Scrape Result:", result);
-});
+    console.error("Scrapin
