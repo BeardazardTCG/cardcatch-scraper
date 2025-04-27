@@ -4,7 +4,7 @@ const cheerio = require('cheerio');
 const app = express();
 app.use(express.json());
 
-// --- New: Accepts Full Query for simpler scraping ---
+// --- API Route: Get Card Price based on Full Query ---
 app.get('/api/getCardPrice', async (req, res) => {
   try {
     const query = req.query.query;
@@ -13,7 +13,6 @@ app.get('/api/getCardPrice', async (req, res) => {
       return res.status(400).json({ error: 'Missing query parameter.' });
     }
 
-    // Build eBay UK search URL
     const ebayUrl = `https://www.ebay.co.uk/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=13&LH_Complete=1&LH_Sold=1&LH_BIN=1&rt=nc&_ipg=120&_dcat=183454&LH_PrefLoc=1`;
 
     const response = await axios.get(ebayUrl, {
@@ -51,23 +50,6 @@ app.get('/api/getCardPrice', async (req, res) => {
   }
 });
 
-// --- Start Express server ---
+// --- Start Server ---
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`✅ CardCatch server running on port ${PORT}`));
-
-
-// --- 4. Card Price API Endpoint ---
-app.get('/api/getCardPrice', async (req, res) => {
-  const { cardName, setName, cardNumber } = req.query;
-  if (!cardName || !setName || !cardNumber) {
-    return res.status(400).json({ error: 'Missing query parameters.' });
-  }
-  const result = await scrapeSoldPrices(cardName, setName, cardNumber);
-  res.json(result);
-});
-
-// --- 5. Start Server ---
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ CardCatch server running on port ${PORT}`);
-});
