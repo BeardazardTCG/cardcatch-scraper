@@ -1,3 +1,28 @@
+// --- CardCatch v2 ---
+// Build perfect eBay search URL for a given card
+
+function buildEbaySearchUrl(cardName, setName, cardNumber) {
+  const baseUrl = 'https://www.ebay.co.uk/sch/i.html';
+  
+  // Combine card name, set, and number into one search query
+  const searchQuery = `${cardName} ${setName} ${cardNumber}`.trim();
+  
+  const params = new URLSearchParams({
+    _nkw: searchQuery,             // Search term
+    _sacat: '183454',               // Category: CCG Individual Cards
+    LH_Sold: '1',                   // Sold listings only
+    LH_Complete: '1',               // Completed listings
+    LH_BIN: '1',                    // Buy It Now only
+    LH_PrefLoc: '1',                // UK Sellers only
+    _ipg: '120',                    // 120 items per page
+    _sop: '13',                     // Sort by Ended Recently
+    _dmd: '2'                       // Display mode gallery
+  });
+
+  const fullUrl = `${baseUrl}?${params.toString()}`;
+  return fullUrl;
+}
+
 const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
