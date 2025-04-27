@@ -1,3 +1,6 @@
+// --- TEMPORARY TESTING ONLY ---
+const testUrl = buildEbaySearchUrl("Mew ex", "Scarlet & Violet 151", "151/165");
+console.log("Test eBay URL:", testUrl);
 // --- CardCatch v2 ---
 // Build perfect eBay search URL for a given card
 
