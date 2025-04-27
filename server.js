@@ -1,4 +1,4 @@
-// --- CardCatch v2 Server ---
+// --- CardCatch v2 Server (with /api/getCardPrice) ---
 
 const express = require('express');
 const axios = require('axios');
@@ -6,29 +6,25 @@ const cheerio = require('cheerio');
 const app = express();
 app.use(express.json());
 
-// --- 1. URL Builder (Build perfect eBay search URL) ---
+// --- 1. URL Builder ---
 function buildEbaySearchUrl(cardName, setName, cardNumber) {
   const baseUrl = 'https://www.ebay.co.uk/sch/i.html';
-
   const searchQuery = `${cardName} ${setName} ${cardNumber}`.trim();
-
   const params = new URLSearchParams({
     _nkw: searchQuery,
-    _sacat: '183454',          // CCG Individual Cards
-    LH_Sold: '1',              // Sold Listings Only
-    LH_Complete: '1',          // Completed Listings
-    LH_BIN: '1',               // Buy It Now Only
-    LH_PrefLoc: '1',           // UK Sellers Only
-    _ipg: '120',               // 120 items per page
-    _sop: '13',                // Sort by Ended Recently
-    _dmd: '2'                  // Gallery View
+    _sacat: '183454',
+    LH_Sold: '1',
+    LH_Complete: '1',
+    LH_BIN: '1',
+    LH_PrefLoc: '1',
+    _ipg: '120',
+    _sop: '13',
+    _dmd: '2'
   });
-
-  const fullUrl = `${baseUrl}?${params.toString()}`;
-  return fullUrl;
+  return `${baseUrl}?${params.toString()}`;
 }
 
-// --- 2. Smart Scraper (Scrape sold prices, block slabs + lots) ---
+// --- 2. Smart Scraper ---
 async function scrapeSoldPrices(cardName, setName, cardNumber) {
   try {
     const ebayUrl = buildEbaySearchUrl(cardName, setName, cardNumber);
@@ -37,21 +33,56 @@ async function scrapeSoldPrices(cardName, setName, cardNumber) {
     });
 
     const $ = cheerio.load(response.data);
+    const badWords = ["psa","bgs","cgc","slab","graded","lot","set","binder","bundle","collection"];
     let prices = [];
 
-    // Bad keywords to block (case insensitive)
-    const badWords = ["PSA", "BGS", "CGC", "Slab", "Graded", "Lot", "Set", "Binder", "Bundle", "Collection"];
-
-    $('li.s-item').each((i, el) => {
+    $('li.s-item').each((_, el) => {
       const title = $(el).find('h3.s-item__title').text().toLowerCase();
-      const priceText = $(el).find('span.s-item__price').first().text().replace('£', '').replace(',', '').trim();
-      const price = parseFloat(priceText);
+      const rawPrice = $(el).find('span.s-item__price').first().text()
+                          .replace('£','').replace(',','').trim();
+      const price = parseFloat(rawPrice);
+      if (!title || isNaN(price)) return;
+      if (badWords.some(w => title.includes(w))) return;
+      prices.push(price);
+    });
 
-      if (!title || isNaN(price)) {
-        return; // skip if missing title or bad price
-      }
+    if (prices.length === 0) {
+      return { averagePrice: null, medianPrice: null };
+    }
 
-      const isBadListing = badWords.some(badWord => title.includes(badWord.toLowerCase()));
+    // average
+    const avg = (prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2);
+    // median
+    prices.sort((a, b) => a - b);
+    const mid = Math.floor(prices.length / 2);
+    const med = (prices.length % 2 !== 0)
+      ? prices[mid]
+      : ((prices[mid - 1] + prices[mid]) / 2).toFixed(2);
 
-      if (!isBadListing) {
-        prices.push(price)
+    return { averagePrice: avg, medianPrice: med };
+  } catch (err) {
+    console.error("Scraping Error:", err.message);
+    return { averagePrice: null, medianPrice: null };
+  }
+}
+
+// --- 3. Health-Check Route ---
+app.get('/', (req, res) => {
+  res.send('✅ CardCatch Server is Alive!');
+});
+
+// --- 4. API Endpoint for Sheets ---
+app.get('/api/getCardPrice', async (req, res) => {
+  const { cardName, setName, cardNumber } = req.query;
+  if (!cardName || !setName || !cardNumber) {
+    return res.status(400).json({ error: 'Missing query parameter: cardName, setName, and cardNumber are required.' });
+  }
+  const result = await scrapeSoldPrices(cardName, setName, cardNumber);
+  res.json(result);
+});
+
+// --- 5. Server Listen ---
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`✅ CardCatch server running on port ${PORT}`);
+});
