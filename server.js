@@ -1,34 +1,9 @@
-// --- CardCatch v2 Server ---
-
-const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
-const app = express();
-app.use(express.json());
 
-// --- 1. URL Builder (Build correct eBay Search URL) ---
-function buildEbaySearchUrl(cardName, setName, cardNumber) {
-  const baseUrl = 'https://www.ebay.co.uk/sch/i.html';
-  
-  const searchQuery = `${cardName} ${setName} ${cardNumber}`.trim();
+// --- CardCatch v2 Smart Scraper ---
+// Scrape sold prices from eBay, block slabs/lots, use median pricing
 
-  const params = new URLSearchParams({
-    _nkw: searchQuery,
-    _sacat: '183454',          // Category: CCG Individual Cards
-    LH_Sold: '1',              // Sold Listings Only
-    LH_Complete: '1',          // Completed Listings
-    LH_BIN: '1',               // Buy It Now Only
-    LH_PrefLoc: '1',           // UK Sellers Only
-    _ipg: '120',               // 120 items per page
-    _sop: '13',                // Sort by Ended Recently
-    _dmd: '2'                  // Gallery View
-  });
-
-  const fullUrl = `${baseUrl}?${params.toString()}`;
-  return fullUrl;
-}
-
-// --- 2. Scrape Sold Prices from eBay ---
 async function scrapeSoldPrices(cardName, setName, cardNumber) {
   try {
     const ebayUrl = buildEbaySearchUrl(cardName, setName, cardNumber);
@@ -39,10 +14,22 @@ async function scrapeSoldPrices(cardName, setName, cardNumber) {
     const $ = cheerio.load(response.data);
     let prices = [];
 
-    $('span.s-item__price').each((i, el) => {
-      let priceText = $(el).text().replace('£', '').replace(',', '').trim();
-      let price = parseFloat(priceText);
-      if (!isNaN(price)) {
+    // Define BAD keywords (case insensitive)
+    const badWords = ["PSA", "BGS", "CGC", "Slab", "Graded", "Lot", "Set", "Binder", "Bundle", "Collection"];
+
+    $('li.s-item').each((i, el) => {
+      const title = $(el).find('h3.s-item__title').text().toLowerCase();
+      const priceText = $(el).find('span.s-item__price').first().text().replace('£', '').replace(',', '').trim();
+      const price = parseFloat(priceText);
+
+      if (!title || isNaN(price)) {
+        return; // skip if missing title or bad price
+      }
+
+      // Check if title contains any bad keywords
+      const isBadListing = badWords.some(badWord => title.includes(badWord.toLowerCase()));
+
+      if (!isBadListing) {
         prices.push(price);
       }
     });
@@ -57,8 +44,8 @@ async function scrapeSoldPrices(cardName, setName, cardNumber) {
     // Calculate median
     const sortedPrices = prices.sort((a, b) => a - b);
     const middle = Math.floor(sortedPrices.length / 2);
-    const medianPrice = (sortedPrices.length % 2 !== 0) ? 
-      sortedPrices[middle] : 
+    const medianPrice = (sortedPrices.length % 2 !== 0) ?
+      sortedPrices[middle] :
       ((sortedPrices[middle - 1] + sortedPrices[middle]) / 2).toFixed(2);
 
     return { averagePrice, medianPrice };
@@ -67,12 +54,3 @@ async function scrapeSoldPrices(cardName, setName, cardNumber) {
     return { averagePrice: null, medianPrice: null };
   }
 }
-
-scrapeSoldPrices("Charizard ex", "Obsidian Flames", "125/197").then(result => {
-  console.log("Scrape Result:", result);
-});
-
-
-// --- 4. Standard Server Listen (not critical right now) ---
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ CardCatch server running on port ${PORT}`));
