@@ -1,55 +1,36 @@
 const express = require('express');
-const axios = require('axios');
-const cheerio = require('cheerio');
+const cors = require('cors');
+const fetch = require('node-fetch');
 const app = express();
-app.use(express.json());
 
-// --- API Route: Get Card Price based on Full Query ---
+app.use(cors());
+
 app.get('/api/getCardPrice', async (req, res) => {
+  const { query } = req.query;
+  if (!query) {
+    return res.status(400).json({ error: 'Missing query parameters.' });
+  }
+
   try {
-    const query = req.query.query;
+    const url = `https://www.ebay.co.uk/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=12&LH_Sold=1&LH_Complete=1&LH_BIN=1`;
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+    });
+    const html = await response.text();
 
-    if (!query) {
-      return res.status(400).json({ error: 'Missing query parameter.' });
+    const matches = [...html.matchAll(/£(\d+\.\d{2})/g)].map(m => parseFloat(m[1]));
+    if (matches.length === 0) {
+      return res.json({ medianPrice: null });
     }
 
-    const ebayUrl = `https://www.ebay.co.uk/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=13&LH_Complete=1&LH_Sold=1&LH_BIN=1&rt=nc&_ipg=120&_dcat=183454&LH_PrefLoc=1`;
-
-    const response = await axios.get(ebayUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0'
-      }
-    });
-
-    const $ = cheerio.load(response.data);
-    let prices = [];
-
-    $('span.s-item__price').each((i, el) => {
-      let priceText = $(el).text().replace('£', '').replace(',', '').trim();
-      let price = parseFloat(priceText);
-      if (!isNaN(price)) {
-        prices.push(price);
-      }
-    });
-
-    if (prices.length > 0) {
-      const sorted = prices.sort((a, b) => a - b);
-      const mid = Math.floor(sorted.length / 2);
-      const medianPrice = sorted.length % 2 !== 0
-        ? sorted[mid]
-        : (sorted[mid - 1] + sorted[mid]) / 2;
-
-      res.json({ medianPrice: parseFloat(medianPrice.toFixed(2)) });
-    } else {
-      res.json({ medianPrice: null });
-    }
-
+    matches.sort((a, b) => a - b);
+    const medianPrice = matches[Math.floor(matches.length / 2)];
+    res.json({ medianPrice });
   } catch (error) {
-    console.error('Scraping Error:', error);
-    res.status(500).json({ medianPrice: null });
+    console.error(error);
+    res.status(500).json({ error: 'Scraping failed' });
   }
 });
 
-// --- Start Server ---
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`✅ CardCatch server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ CardCatch scraper running on port ${PORT}`));
